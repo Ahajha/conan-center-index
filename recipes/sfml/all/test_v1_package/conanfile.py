@@ -8,6 +8,10 @@ class TestPackageConan(ConanFile):
 
     def build(self):
         cmake = CMake(self)
+        cmake.definitions["SFML_WITH_WINDOW"] = self.options["sfml"].window
+        cmake.definitions["SFML_WITH_GRAPHICS"] = self.options["sfml"].graphics
+        cmake.definitions["SFML_WITH_NETWORK"] = self.options["sfml"].network
+        cmake.definitions["SFML_WITH_AUDIO"] = self.options["sfml"].audio
         cmake.configure()
         cmake.build()
 
