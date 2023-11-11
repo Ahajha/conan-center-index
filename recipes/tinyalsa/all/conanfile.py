@@ -17,8 +17,8 @@ class TinyAlsaConan(ConanFile):
     topics = ("tiny", "alsa", "sound", "audio", "tinyalsa")
     package_type = "library"
     settings = "os", "compiler", "build_type", "arch"
-    options = {"shared": [True, False], "with_utils": [True, False]}
-    default_options = {'shared': False, 'with_utils': False}
+    options = {"shared": [True, False]}
+    default_options = {'shared': False}
 
     def layout(self):
         basic_layout(self, src_folder="src")
@@ -56,9 +56,6 @@ class TinyAlsaConan(ConanFile):
 
         rmdir(self, os.path.join(self.package_folder, "share"))
 
-        if not self.options.with_utils:
-            rmdir(self, os.path.join(self.package_folder, "bin"))
-
         with chdir(self, os.path.join(self.package_folder, "lib")):
             files = os.listdir()
             for f in files:
@@ -69,7 +66,8 @@ class TinyAlsaConan(ConanFile):
         self.cpp_info.libs = ["tinyalsa"]
         if Version(self.version) >= "2.0.0":
             self.cpp_info.system_libs.append("dl")
-        if self.options.with_utils:
-            bin_path = os.path.join(self.package_folder, "bin")
-            self.output.info('Appending PATH environment variable: %s' % bin_path)
-            self.env_info.path.append(bin_path)
+        
+        # Needed for compatibility with v1.x - Remove when 2.0 becomes the default
+        bin_path = os.path.join(self.package_folder, "bin")
+        self.output.info('Appending PATH environment variable: %s' % bin_path)
+        self.env_info.path.append(bin_path)
