@@ -9,7 +9,7 @@ class TestPackageConan(ConanFile):
     generators = "CMakeToolchain", "CMakeDeps", "VirtualRunEnv"
 
     def requirements(self):
-        self.requires(self.tested_reference_str)
+        self.requires(self.tested_reference_str, run=True)
 
     def layout(self):
         cmake_layout(self)
@@ -23,3 +23,4 @@ class TestPackageConan(ConanFile):
         if can_run(self):
             bin_path = os.path.join(self.cpp.build.bindirs[0], "example")
             self.run(bin_path, env="conanrun")
+            self.run("tinymix --help", env="conanrun")
