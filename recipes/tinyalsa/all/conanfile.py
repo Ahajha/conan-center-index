@@ -1,6 +1,11 @@
-from conans import ConanFile, tools, AutoToolsBuildEnvironment
-from conans.errors import ConanInvalidConfiguration
+from conan import ConanFile
+from conan.tools.files import get, export_conandata_patches, apply_conandata_patches, chdir, copy, rmdir
+from conan.tools.layout import basic_layout
+from conan.tools.scm import Version
+from conan.errors import ConanInvalidConfiguration
 import os
+
+from conans import AutoToolsBuildEnvironment
 
 required_conan_version = ">=1.33.0"
 
@@ -11,14 +16,12 @@ class TinyAlsaConan(ConanFile):
     homepage = "https://github.com/tinyalsa/tinyalsa"
     topics = ("tiny", "alsa", "sound", "audio", "tinyalsa")
     description = "A small library to interface with ALSA in the Linux kernel"
-    exports_sources = ["patches/*",]
     options = {"shared": [True, False], "with_utils": [True, False]}
     default_options = {'shared': False, 'with_utils': False}
     settings = "os", "compiler", "build_type", "arch"
 
-    @property
-    def _source_subfolder(self):
-        return "source_subfolder"
+    def layout(self):
+        basic_layout(self, src_folder="src")
 
     def validate(self):
         if self.settings.os != "Linux":
@@ -27,32 +30,34 @@ class TinyAlsaConan(ConanFile):
     def configure(self):
         del self.settings.compiler.libcxx
         del self.settings.compiler.cppstd
+    
+    def export_sources(self):
+        export_conandata_patches(self)
 
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version], destination=self._source_subfolder, strip_root=True)
+        get(self, **self.conan_data["sources"][self.version], strip_root=True)
 
     def build(self):
-        for patch in self.conan_data.get("patches", {}).get(self.version, []):
-            tools.patch(**patch)
-        with tools.chdir(self._source_subfolder):
+        apply_conandata_patches(self)
+        with chdir(self, self.source_folder):
             env_build = AutoToolsBuildEnvironment(self)
             env_build.make()
 
     def package(self):
-        self.copy("NOTICE", dst="licenses", src=self._source_subfolder)
+        copy(self, "NOTICE", dst=os.path.join(self.package_folder, "licenses"), src=self.source_folder)
 
-        with tools.chdir(self._source_subfolder):
+        with chdir(self, self.source_folder):
             env_build = AutoToolsBuildEnvironment(self)
             env_build_vars = env_build.vars
             env_build_vars['PREFIX'] = self.package_folder
             env_build.install(vars=env_build_vars)
 
-        tools.rmdir(os.path.join(self.package_folder, "share"))
+        rmdir(self, os.path.join(self.package_folder, "share"))
 
         if not self.options.with_utils:
-            tools.rmdir(os.path.join(self.package_folder, "bin"))
+            rmdir(self, os.path.join(self.package_folder, "bin"))
 
-        with tools.chdir(os.path.join(self.package_folder, "lib")):
+        with chdir(self, os.path.join(self.package_folder, "lib")):
             files = os.listdir()
             for f in files:
                 if (self.options.shared and f.endswith(".a")) or (not self.options.shared and not f.endswith(".a")):
@@ -60,7 +65,7 @@ class TinyAlsaConan(ConanFile):
 
     def package_info(self):
         self.cpp_info.libs = ["tinyalsa"]
-        if tools.Version(self.version) >= "2.0.0":
+        if Version(self.version) >= "2.0.0":
             self.cpp_info.system_libs.append("dl")
         if self.options.with_utils:
             bin_path = os.path.join(self.package_folder, "bin")
