@@ -69,5 +69,5 @@ class TinyAlsaConan(ConanFile):
         
         # Needed for compatibility with v1.x - Remove when 2.0 becomes the default
         bin_path = os.path.join(self.package_folder, "bin")
-        self.output.info('Appending PATH environment variable: %s' % bin_path)
-        self.env_info.path.append(bin_path)
+        self.output.info(f'Appending PATH environment variable: {bin_path}')
+        self.env_info.PATH.append(bin_path)
