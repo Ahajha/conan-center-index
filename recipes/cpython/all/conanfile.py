@@ -1,5 +1,7 @@
 from conans import AutoToolsBuildEnvironment, ConanFile, MSBuild, tools
 from conans.errors import ConanInvalidConfiguration
+from conan.tools.files import export_conandata_patches, apply_conandata_patches
+from conan.tools.layout import basic_layout
 from io import StringIO
 import os
 import re
@@ -15,7 +17,6 @@ class CPythonConan(ConanFile):
     description = "Python is a programming language that lets you work quickly and integrate systems more effectively."
     topics = ("python", "cpython", "language", "script")
     license = ("Python-2.0",)
-    exports_sources = "patches/**"
     settings = "os", "arch", "compiler", "build_type"
     options = {
         "shared": [True, False],
@@ -97,6 +98,9 @@ class CPythonConan(ConanFile):
     @property
     def _is_py2(self):
         return tools.Version(self._version_number_only).major == "2"
+
+    def export_sources(self):
+        export_conandata_patches(self)
 
     def config_options(self):
         if self.settings.os == "Windows":
@@ -263,8 +267,7 @@ class CPythonConan(ConanFile):
         return self._autotools
 
     def _patch_sources(self):
-        for patch in self.conan_data.get("patches",{}).get(self.version, []):
-            tools.patch(**patch)
+        apply_conandata_patches(self)
         if self._is_py3 and tools.Version(self._version_number_only) < "3.10":
             tools.replace_in_file(os.path.join(self._source_subfolder, "setup.py"),
                                   ":libmpdec.so.2", "mpdec")
