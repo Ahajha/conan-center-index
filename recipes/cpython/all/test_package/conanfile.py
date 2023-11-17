@@ -170,7 +170,7 @@ class TestPackageConan(ConanFile):
                     self._test_module("curses", self._cpython_option("with_curses"))
 
                 self._test_module("expat", True)
-                self._test_module("sqlite3", True)
+                self._test_module("sqlite3", self._cpython_option("with_sqlite3"))
                 self._test_module("decimal", True)
                 self._test_module("ctypes", True)
 
