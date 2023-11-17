@@ -1,6 +1,6 @@
 from conans import AutoToolsBuildEnvironment, ConanFile, MSBuild, tools
 from conans.errors import ConanInvalidConfiguration
-from conan.tools.files import export_conandata_patches, apply_conandata_patches
+from conan.tools.files import export_conandata_patches, apply_conandata_patches, replace_in_file
 from conan.tools.layout import basic_layout
 from io import StringIO
 import os
@@ -313,23 +313,18 @@ class CPythonConan(ConanFile):
             tools.replace_in_file(os.path.join(self._source_subfolder, "PCbuild", "pythonw.vcxproj"),
                                   "<ItemDefinitionGroup>", "<ItemDefinitionGroup><ClCompile><PreprocessorDefinitions>Py_NO_ENABLE_SHARED;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>")
 
-    def _upgrade_single_project_file(self, project_file):
-        """
-        `devenv /upgrade <project.vcxproj>` will upgrade *ALL* projects referenced by the project.
-        By temporarily moving the solution project, only one project is upgraded
-        This is needed for static cpython or for disabled optional dependencies (e.g. tkinter=False)
-        Restore it afterwards because it is needed to build some targets.
-        """
-        tools.rename(os.path.join(self._source_subfolder, "PCbuild", "pcbuild.sln"),
-                     os.path.join(self._source_subfolder, "PCbuild", "pcbuild.sln.bak"))
-        tools.rename(os.path.join(self._source_subfolder, "PCbuild", "pcbuild.proj"),
-                     os.path.join(self._source_subfolder, "PCbuild", "pcbuild.proj.bak"))
-        with tools.vcvars(self.settings):
-            self.run("devenv \"{}\" /upgrade".format(project_file), run_environment=True)
-        tools.rename(os.path.join(self._source_subfolder, "PCbuild", "pcbuild.sln.bak"),
-                     os.path.join(self._source_subfolder, "PCbuild", "pcbuild.sln"))
-        tools.rename(os.path.join(self._source_subfolder, "PCbuild", "pcbuild.proj.bak"),
-                     os.path.join(self._source_subfolder, "PCbuild", "pcbuild.proj"))
+        # Don't import projects that we aren't pulling
+        deps = [
+            # Option suffix, base file name, conan props suffix
+            ("sqlite3", "_sqlite3", "sqlite3"),
+            ("tkinter", "_tkinter", "tk"),
+            ("bz2", "_bz2", "bzip2"),
+            ("lzma", "_lzma", "xz_utils"),
+        ]
+        for opt, fname, propname in deps:
+            if not self.options.get_safe(f"with_{opt}", default=True):
+                replace_in_file(self, os.path.join(self._source_subfolder, "PCbuild", f"{fname}.vcxproj"),
+                            f'<Import Project="../../conan_{propname}.props" />', "")
 
     @property
     def _solution_projects(self):
@@ -344,17 +339,7 @@ class CPythonConan(ConanFile):
                     return False
                 return True
 
-            def sort_importance(key):
-                importance = (
-                    "pythoncore",   # The python library MUST be built first. All modules and executables depend on it
-                    "python",       # Build the python executable next (for convenience, when debugging)
-                )
-                try:
-                    return importance.index(key)
-                except ValueError:
-                    return len(importance)
-
-            projects = sorted((p for p in projects if project_build(p)), key=sort_importance)
+            projects = list(filter(project_build, projects))
             return projects
         else:
             return "pythoncore", "python", "pythonw"
@@ -401,13 +386,9 @@ class CPythonConan(ConanFile):
         projects = self._solution_projects
         self.output.info("Building {} Visual Studio projects: {}".format(len(projects), projects))
 
-        with tools.no_op():
-            for project_i, project in enumerate(projects, 1):
-                self.output.info("[{}/{}] Building project '{}'...".format(project_i, len(projects), project))
-                project_file = os.path.join(self._source_subfolder, "PCbuild", project + ".vcxproj")
-                self._upgrade_single_project_file(project_file)
-                msbuild.build(project_file, upgrade_project=False, build_type="Debug" if self.settings.build_type == "Debug" else "Release",
-                              platforms=self._msvc_archs, properties=msbuild_properties)
+        msbuild.build(os.path.join(self._source_subfolder, "PCbuild", "pcbuild.sln"), targets=projects,
+                      build_type="Debug" if self.settings.build_type == "Debug" else "Release", 
+                      platforms=self._msvc_archs, properties=msbuild_properties)
 
     def build(self):
         # FIXME: these checks belong in validate, but the versions of dependencies are not available there yet
