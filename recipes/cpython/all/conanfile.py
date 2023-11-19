@@ -177,7 +177,7 @@ class CPythonConan(ConanFile):
     def requirements(self):
         self.requires("zlib/1.2.11")
         if self._supports_modules:
-            self.requires("openssl/1.1.1l")
+            self.requires("openssl/[>=1.1 <4]")
             self.requires("expat/2.4.1")
             if self._with_libffi:
                 self.requires("libffi/3.2.1")
@@ -189,7 +189,7 @@ class CPythonConan(ConanFile):
                 self.requires("mpdecimal/2.5.0")  # FIXME: no 2.5.1 to troubleshoot apple
         if self.settings.os != "Windows":
             if not tools.is_apple_os(self.settings.os):
-                self.requires("libuuid/1.0.3")
+                self.requires("util-linux-libuuid/2.39")
             self.requires("libxcrypt/4.4.25")
         if self.options.get_safe("with_bz2"):
             self.requires("bzip2/1.0.8")
