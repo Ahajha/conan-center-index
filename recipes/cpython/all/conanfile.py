@@ -313,9 +313,28 @@ class CPythonConan(ConanFile):
 
         if self.options.get_safe("with_curses", False):
             # FIXME: this will link to ALL libraries of ncurses. Only need to link to ncurses(w) (+ eventually tinfo)
+            ncurses_info = self.dependencies["ncurses"].cpp_info.aggregated_components()
+            tinfo_info = self.dependencies["ncurses"].cpp_info.components["tinfo"]
+            libs = []
+            for dep in (ncurses_info, tinfo_info):
+                libs += dep.libs
+                libs += dep.system_libs
             replace_in_file(self, os.path.join(self.source_folder, "setup.py"),
-                                  "curses_libs = ",
-                                  "curses_libs = {} #".format(repr(self.deps_cpp_info["ncurses"].libs + self.deps_cpp_info["ncurses"].system_libs)))
+                "curses_libs = ",
+                f"curses_libs = {libs} #")
+
+        if self._supports_modules:
+            openssl = self.dependencies["openssl"].cpp_info.aggregated_components()
+            zlib = self.dependencies["zlib"].cpp_info.aggregated_components()
+            replace_in_file(self, os.path.join(self.source_folder, "setup.py"),
+                            "openssl_includes = ",
+                            f"openssl_includes = {openssl.includedirs + zlib.includedirs} #")
+            replace_in_file(self, os.path.join(self.source_folder, "setup.py"),
+                            "openssl_libdirs = ",
+                            f"openssl_libdirs = {openssl.libdirs + zlib.libdirs} #")
+            replace_in_file(self, os.path.join(self.source_folder, "setup.py"),
+                            "openssl_libs = ",
+                            f"openssl_libs = {openssl.libs + zlib.libs} #")
 
         # Enable static MSVC cpython
         if not self.options.shared:
