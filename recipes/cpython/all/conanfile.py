@@ -1,7 +1,9 @@
-from conans import AutoToolsBuildEnvironment, ConanFile, MSBuild, tools
+from conans import AutoToolsBuildEnvironment, tools
 from conans.errors import ConanInvalidConfiguration
+from conan import ConanFile
 from conan.tools.files import export_conandata_patches, apply_conandata_patches, replace_in_file, get
 from conan.tools.layout import basic_layout
+from conan.tools.microsoft import MSBuildDeps, MSBuildToolchain, MSBuild, is_msvc
 from io import StringIO
 import os
 import re
@@ -264,6 +266,15 @@ class CPythonConan(ConanFile):
         self._autotools.configure(args=conf_args, configure_dir=self.source_folder, build=build)
         return self._autotools
 
+    def generate(self):
+        if is_msvc(self):
+            deps = MSBuildDeps(self)
+            deps.generate()
+
+            tc = MSBuildToolchain(self)
+            tc.properties["IncludeExternals"] = "true"
+            tc.generate()
+
     def _patch_sources(self):
         apply_conandata_patches(self)
         if self._is_py3 and tools.Version(self._version_number_only) < "3.10":
@@ -311,6 +322,8 @@ class CPythonConan(ConanFile):
             tools.replace_in_file(os.path.join(self.source_folder, "PCbuild", "pythonw.vcxproj"),
                                   "<ItemDefinitionGroup>", "<ItemDefinitionGroup><ClCompile><PreprocessorDefinitions>Py_NO_ENABLE_SHARED;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>")
 
+        # Strictly speaking this isn't necessary, though maybe we can fix it a different way.
+        # Removing this section just produces ignorable errors.
         # Don't import projects that we aren't pulling
         deps = [
             # Option suffix, base file name, conan props suffix
@@ -328,6 +341,13 @@ class CPythonConan(ConanFile):
         for filename in os.listdir(PCBuild):
             if filename.endswith(".vcxproj"): 
                 replace_in_file(self, os.path.join(PCBuild, filename), "CONAN_REPLACE_HERE", self.generators_folder, strict=False)
+        
+        conantoolchain_props = os.path.join(self.generators_folder, MSBuildToolchain.filename)
+        replace_in_file(
+            self, os.path.join(self.source_folder, "PCbuild", "pythoncore.vcxproj"),
+            '<Import Project="python.props" />',
+            f'<Import Project="{conantoolchain_props}" /><Import Project="python.props" />',
+        )
 
     @property
     def _solution_projects(self):
@@ -383,15 +403,10 @@ class CPythonConan(ConanFile):
 
     def _msvc_build(self):
         msbuild = MSBuild(self)
-        msbuild_properties = {
-            "IncludeExternals": "true",
-        }
         projects = self._solution_projects
         self.output.info("Building {} Visual Studio projects: {}".format(len(projects), projects))
 
-        msbuild.build(os.path.join(self.source_folder, "PCbuild", "pcbuild.sln"), targets=projects,
-                      build_type="Debug" if self.settings.build_type == "Debug" else "Release", 
-                      platforms=self._msvc_archs, properties=msbuild_properties)
+        msbuild.build(os.path.join(self.source_folder, "PCbuild", "pcbuild.sln"), targets=projects)
 
     def build(self):
         # FIXME: these checks belong in validate, but the versions of dependencies are not available there yet
