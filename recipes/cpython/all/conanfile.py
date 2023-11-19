@@ -1,7 +1,8 @@
-from conans import AutoToolsBuildEnvironment, tools
+from conans import tools
 from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.files import export_conandata_patches, apply_conandata_patches, replace_in_file, get, rmdir, mkdir
+from conan.tools.gnu import Autotools, AutotoolsDeps, AutotoolsToolchain
 from conan.tools.layout import basic_layout
 from conan.tools.microsoft import MSBuildDeps, MSBuildToolchain, MSBuild, is_msvc
 from conan.tools.scm import Version
@@ -67,8 +68,6 @@ class CPythonConan(ConanFile):
         # options that don't change package id
         "env_vars": True,
     }
-
-    _autotools = None
 
     @property
     def _version_number_only(self):
@@ -209,14 +208,22 @@ class CPythonConan(ConanFile):
         if self.options.get_safe("with_lzma", False):
             self.requires("xz_utils/5.2.5")
 
-    def _configure_autotools(self):
-        if self._autotools:
-            return self._autotools
-        self._autotools = AutoToolsBuildEnvironment(self, win_bash=tools.os_info.is_windows)
-        self._autotools.libs = []
+    def _generate_autotools(self):
+        # TODO maybe clean up this section
+        tc = AutotoolsToolchain(self)
+        tc.update_configure_args({
+            "--prefix": f"{self.package_folder}",
+            "--bindir": "${prefix}/bin",
+            "--sbindir": "${prefix}/bin",
+            "--libexecdir": "${prefix}/bin",
+            "--libdir": "${prefix}/lib",
+            "--includedir": "${prefix}/include",
+            "--oldincludedir": "${prefix}/include",
+            "--datarootdir": "${prefix}/share",
+        })
+
         yes_no = lambda v: "yes" if v else "no"
         conf_args = [
-            "--enable-shared={}".format(yes_no(self.options.shared)),
             "--with-doc-strings={}".format(yes_no(self.options.docstrings)),
             "--with-pymalloc={}".format(yes_no(self.options.pymalloc)),
             "--with-system-expat",
@@ -254,16 +261,22 @@ class CPythonConan(ConanFile):
                 "--with-tcltk-includes={}".format(" ".join(tcltk_includes)),
                 "--with-tcltk-libs={}".format(" ".join(tcltk_libs)),
             ])
-        if self.settings.os in ("Linux", "FreeBSD"):
-            # Building _testembed fails due to missing pthread/rt symbols
-            self._autotools.link_flags.append("-lpthread")
+        tc.configure_args += conf_args
+        tc.generate()
 
-        build = None
-        if tools.cross_building(self) and not tools.cross_building(self, skip_x64_x86=True):
-            # Building from x86_64 to x86 is not a "real" cross build, so set build == host
-            build = tools.get_gnu_triplet(str(self.settings.os), str(self.settings.arch), str(self.settings.compiler))
-        self._autotools.configure(args=conf_args, configure_dir=self.source_folder, build=build)
-        return self._autotools
+        deps = AutotoolsDeps(self)
+        deps.generate()
+
+        # TODO necessary?
+        #if self.settings.os in ("Linux", "FreeBSD"):
+        #    # Building _testembed fails due to missing pthread/rt symbols
+        #    self._autotools.link_flags.append("-lpthread")
+#
+        #build = None
+        #if tools.cross_building(self) and not tools.cross_building(self, skip_x64_x86=True):
+        #    # Building from x86_64 to x86 is not a "real" cross build, so set build == host
+        #    build = tools.get_gnu_triplet(str(self.settings.os), str(self.settings.arch), str(self.settings.compiler))
+        #self._autotools.configure(args=conf_args, configure_dir=self.source_folder, build=build)
 
     def generate(self):
         if is_msvc(self):
@@ -273,6 +286,8 @@ class CPythonConan(ConanFile):
             tc = MSBuildToolchain(self)
             tc.properties["IncludeExternals"] = "true"
             tc.generate()
+        else:
+            self._generate_autotools()
 
     def _patch_sources(self):
         apply_conandata_patches(self)
@@ -425,8 +440,9 @@ class CPythonConan(ConanFile):
         if self.settings.compiler == "Visual Studio":
             self._msvc_build()
         else:
-            autotools = self._configure_autotools()
-            autotools.make()
+            at = Autotools(self)
+            at.configure()
+            at.make()
 
     @property
     def _msvc_artifacts_path(self):
@@ -534,8 +550,8 @@ class CPythonConan(ConanFile):
                 self._msvc_package_layout()
             tools.remove_files_by_mask(os.path.join(self.package_folder, "bin"), "vcruntime*")
         else:
-            autotools = self._configure_autotools()
-            autotools.install()
+            at = Autotools(self)
+            at.install(args=["DESTDIR="])
             rmdir(self, os.path.join(self.package_folder, "lib", "pkgconfig"))
             rmdir(self, os.path.join(self.package_folder, "share"))
 
@@ -683,7 +699,7 @@ class CPythonConan(ConanFile):
                 self.cpp_info.components["_hidden"].requires.append("libffi::libffi")
             if self.settings.os != "Windows":
                 if not tools.is_apple_os(self.settings.os):
-                    self.cpp_info.components["_hidden"].requires.append("libuuid::libuuid")
+                    self.cpp_info.components["_hidden"].requires.append("util-linux-libuuid::util-linux-libuuid")
                 self.cpp_info.components["_hidden"].requires.append("libxcrypt::libxcrypt")
             if self.options.with_bz2:
                 self.cpp_info.components["_hidden"].requires.append("bzip2::bzip2")
