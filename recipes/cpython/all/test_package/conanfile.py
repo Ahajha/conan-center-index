@@ -1,5 +1,10 @@
-from conans import AutoToolsBuildEnvironment, ConanFile, CMake, tools, RunEnvironment
-from conans.errors import ConanException
+from conans import CMake
+from conan import ConanFile
+from conan.errors import ConanException
+from conan.tools.apple import is_apple_os
+from conan.tools.build import cross_building
+from conan.tools.files import mkdir
+from conan.tools.scm import Version
 from io import StringIO
 import os
 import re
@@ -31,7 +36,7 @@ class CmakePython3Abi(object):
 
 class TestPackageConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
-    generators = "cmake"
+    generators = "cmake", "VirtualRunEnv", "VCVars"
 
     @property
     def _py_version(self):
@@ -43,7 +48,7 @@ class TestPackageConan(ConanFile):
 
     @property
     def _cmake_abi(self):
-        if self._py_version < tools.Version("3.8"):
+        if self._py_version < Version("3.8"):
             return CmakePython3Abi(
                 debug=self.settings.build_type == "Debug",
                 pymalloc=self._pymalloc,
@@ -67,7 +72,7 @@ class TestPackageConan(ConanFile):
         return self.settings.compiler != "Visual Studio" or self.options["cpython"].shared
 
     def build(self):
-        if not tools.cross_building(self, skip_x64_x86=True):
+        if not cross_building(self, skip_x64_x86=True):
             command = "{} --version".format(self.deps_user_info["cpython"].python)
             buffer = StringIO()
             self.run(command, output=buffer, ignore_errors=True, run_environment=True)
@@ -93,38 +98,32 @@ class TestPackageConan(ConanFile):
         cmake.definitions["Python{}_FIND_STRATEGY".format(py_major)] = "LOCATION"
 
         if self.settings.compiler != "Visual Studio":
-            if tools.Version(self._py_version) < tools.Version("3.8"):
+            if Version(self._py_version) < Version("3.8"):
                 cmake.definitions["Python{}_FIND_ABI".format(py_major)] = self._cmake_abi.cmake_arg
 
-        with tools.environment_append(RunEnvironment(self).vars):
-            cmake.configure()
+        cmake.configure()
         cmake.build()
 
-        if not tools.cross_building(self, skip_x64_x86=True):
+        if not cross_building(self, skip_x64_x86=True):
             if self._supports_modules:
-                with tools.vcvars(self.settings) if self.settings.compiler == "Visual Studio" else tools.no_op():
-                    modsrcfolder = "py2" if tools.Version(self.deps_cpp_info["cpython"].version).major < "3" else "py3"
-                    tools.mkdir(os.path.join(self.build_folder, modsrcfolder))
-                    for fn in os.listdir(os.path.join(self.source_folder, modsrcfolder)):
-                        shutil.copy(os.path.join(self.source_folder, modsrcfolder, fn), os.path.join(self.build_folder, modsrcfolder, fn))
-                    shutil.copy(os.path.join(self.source_folder, "setup.py"), os.path.join(self.build_folder, "setup.py"))
-                    env = {
-                        "DISTUTILS_USE_SDK": "1",
-                        "MSSdk": "1"
-                    }
-                    env.update(**AutoToolsBuildEnvironment(self).vars)
-                    with tools.environment_append(env):
-                        setup_args = [
-                            "{}/setup.py".format(self.source_folder),
-                            # "conan",
-                            # "--install-folder", self.build_folder,
-                            "build",
-                            "--build-base", self.build_folder,
-                            "--build-platlib", os.path.join(self.build_folder, "lib_setuptools"),
-                        ]
-                        if self.settings.build_type == "Debug":
-                            setup_args.append("--debug")
-                        self.run("{} {}".format(self.deps_user_info["cpython"].python, " ".join("\"{}\"".format(a) for a in setup_args)), run_environment=True)
+                modsrcfolder = "py2" if Version(self.deps_cpp_info["cpython"].version).major < "3" else "py3"
+                mkdir(self, os.path.join(self.build_folder, modsrcfolder))
+                for fn in os.listdir(os.path.join(self.source_folder, modsrcfolder)):
+                    shutil.copy(os.path.join(self.source_folder, modsrcfolder, fn), os.path.join(self.build_folder, modsrcfolder, fn))
+                shutil.copy(os.path.join(self.source_folder, "setup.py"), os.path.join(self.build_folder, "setup.py"))
+                os.environ["DISTUTILS_USE_SDK"] = "1"
+                os.environ["MSSdk"] = "1"
+                setup_args = [
+                    "{}/setup.py".format(self.source_folder),
+                    # "conan",
+                    # "--install-folder", self.build_folder,
+                    "build",
+                    "--build-base", self.build_folder,
+                    "--build-platlib", os.path.join(self.build_folder, "lib_setuptools"),
+                ]
+                if self.settings.build_type == "Debug":
+                    setup_args.append("--debug")
+                self.run("{} {}".format(self.deps_user_info["cpython"].python, " ".join("\"{}\"".format(a) for a in setup_args)), run_environment=True)
 
     def _test_module(self, module, should_work):
         try:
@@ -150,7 +149,7 @@ class TestPackageConan(ConanFile):
             return False
 
     def test(self):
-        if not tools.cross_building(self, skip_x64_x86=True):
+        if not cross_building(self, skip_x64_x86=True):
             self.run("{} -c \"print('hello world')\"".format(self.deps_user_info["cpython"].python), run_environment=True)
 
             buffer = StringIO()
@@ -166,27 +165,28 @@ class TestPackageConan(ConanFile):
                 self._test_module("bsddb", self._cpython_option("with_bsddb"))
                 self._test_module("lzma", self._cpython_option("with_lzma"))
                 self._test_module("tkinter", self._cpython_option("with_tkinter"))
-                with tools.environment_append({"TERM": "ansi"}):
-                    self._test_module("curses", self._cpython_option("with_curses"))
+                os.environ["TERM"] = "ansi"
+                self._test_module("curses", self._cpython_option("with_curses"))
 
                 self._test_module("expat", True)
                 self._test_module("sqlite3", self._cpython_option("with_sqlite3"))
                 self._test_module("decimal", True)
                 self._test_module("ctypes", True)
 
-            if tools.is_apple_os(self.settings.os) and not self.options["cpython"].shared:
+            if is_apple_os(self) and not self.options["cpython"].shared:
                 self.output.info("Not testing the module, because these seem not to work on apple when cpython is built as a static library")
                 # FIXME: find out why cpython on apple does not allow to use modules linked against a static python
             else:
                 if self._supports_modules:
-                    with tools.environment_append({"PYTHONPATH": [os.path.join(self.build_folder, "lib")]}):
-                        self.output.info("Testing module (spam) using cmake built module")
-                        self._test_module("spam", True)
+                    os.environ["PYTHONPATH"] = os.path.join(self.build_folder, "lib")
+                    self.output.info("Testing module (spam) using cmake built module")
+                    self._test_module("spam", True)
 
-                    with tools.environment_append({"PYTHONPATH": [os.path.join(self.build_folder, "lib_setuptools")]}):
-                        self.output.info("Testing module (spam) using setup.py built module")
-                        self._test_module("spam", True)
+                    os.environ["PYTHONPATH"] = os.path.join(self.build_folder, "lib_setuptools")
+                    self.output.info("Testing module (spam) using setup.py built module")
+                    self._test_module("spam", True)
 
             # MSVC builds need PYTHONHOME set.
-            with tools.environment_append({"PYTHONHOME": self.deps_user_info["cpython"].pythonhome}) if self.deps_user_info["cpython"].module_requires_pythonhome == "True" else tools.no_op():
-                self.run(os.path.join("bin", "test_package"), run_environment=True)
+            if self.deps_user_info["cpython"].module_requires_pythonhome == "True":
+                os.environ["PYTHONHOME"] = self.deps_user_info["cpython"].pythonhome
+            self.run(os.path.join("bin", "test_package"), run_environment=True)
