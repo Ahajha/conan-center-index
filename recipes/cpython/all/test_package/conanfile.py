@@ -42,10 +42,6 @@ class TestPackageConan(ConanFile):
         cmake_layout(self)
 
     @property
-    def _python(self):
-        return self.dependencies["cpython"].conf_info.get("user.cpython:python", check_type=str)
-
-    @property
     def _py_version(self):
         return re.match(r"^([0-9.]+)", self.deps_cpp_info["cpython"].version).group(1)
 
