@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 project(test_package C)
 
-include("${CMAKE_BINARY_DIR}/conanbuildinfo.cmake")
-conan_basic_setup()
+find_package(cpython REQUIRED)
 
 set(CACHE PY_VERSION_MAJOR "" CACHE STRING "MAJOR version of python")
 set(CACHE PY_VERSION_MAJOR_MINOR "" CACHE STRING "MAJOR.MINOR version of python")
@@ -97,4 +96,4 @@ if(BUILD_MODULE)
 endif()
 
 add_executable(${PROJECT_NAME} "py${PY_VERSION_MAJOR}/test_package.c")
-target_link_libraries(${PROJECT_NAME} ${CONAN_LIBS})
+target_link_libraries(${PROJECT_NAME} cpython::embed) # TODO: Should this be one of the find_package(Python3) targets?
