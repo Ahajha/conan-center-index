@@ -742,6 +742,7 @@ class CPythonConan(ConanFile):
             self.env_info.PATH.append(bindir)
 
         python = self._cpython_interpreter_path
+        self.conf_info.define("user.cpython:python", python)
         self.user_info.python = python
         if self.options.env_vars:
             self.output.info("Setting PYTHON environment variable: {}".format(python))
@@ -757,6 +758,7 @@ class CPythonConan(ConanFile):
         self.user_info.pythonhome = pythonhome
 
         pythonhome_required = self.settings.compiler == "Visual Studio" or tools.is_apple_os(self.settings.os)
+        self.conf_info.define("user.cpython:module_requires_pythonhome", pythonhome_required)
         self.user_info.module_requires_pythonhome = pythonhome_required
 
         if self.settings.compiler == "Visual Studio":
@@ -772,3 +774,4 @@ class CPythonConan(ConanFile):
                 self.output.info("Setting PYTHON_ROOT environment variable: {}".format(python_root))
                 self.env_info.PYTHON_ROOT = python_root
         self.user_info.python_root = python_root
+        self.conf_info.define("user.cpython:python_root", python_root)
