@@ -1,8 +1,8 @@
-from conans import CMake
 from conan import ConanFile
 from conan.errors import ConanException
 from conan.tools.apple import is_apple_os
 from conan.tools.build import cross_building
+from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 from conan.tools.files import mkdir
 from conan.tools.scm import Version
 from io import StringIO
@@ -36,7 +36,10 @@ class CmakePython3Abi(object):
 
 class TestPackageConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
-    generators = "cmake", "VirtualRunEnv", "VCVars"
+    generators = "CMakeDeps", "VirtualRunEnv", "VCVars"
+
+    def layout(self):
+        cmake_layout(self)
 
     @property
     def _py_version(self):
@@ -71,7 +74,7 @@ class TestPackageConan(ConanFile):
     def _supports_modules(self):
         return self.settings.compiler != "Visual Studio" or self.options["cpython"].shared
 
-    def build(self):
+    def generate(self):
         if not cross_building(self, skip_x64_x86=True):
             command = "{} --version".format(self.deps_user_info["cpython"].python)
             buffer = StringIO()
@@ -79,28 +82,32 @@ class TestPackageConan(ConanFile):
             self.output.info("output: %s" % buffer.getvalue())
             self.run(command, run_environment=True)
 
-        cmake = CMake(self)
+        tc = CMakeToolchain(self)
         py_major = self.deps_cpp_info["cpython"].version.split(".")[0]
-        cmake.definitions["BUILD_MODULE"] = self._supports_modules
-        cmake.definitions["PY_VERSION_MAJOR"] = py_major
-        cmake.definitions["PY_VERSION_MAJOR_MINOR"] = ".".join(self._py_version.split(".")[:2])
-        cmake.definitions["PY_FULL_VERSION"] = self.deps_cpp_info["cpython"].version
-        cmake.definitions["PY_VERSION"] = self._py_version
-        cmake.definitions["PY_VERSION_SUFFIX"] = self._cmake_abi.suffix
-        cmake.definitions["PYTHON_EXECUTABLE"] = self.deps_user_info["cpython"].python
-        cmake.definitions["USE_FINDPYTHON_X".format(py_major)] = self._cmake_try_FindPythonX
-        cmake.definitions["Python{}_EXECUTABLE".format(py_major)] = self.deps_user_info["cpython"].python
-        cmake.definitions["Python{}_ROOT_DIR".format(py_major)] = self.deps_cpp_info["cpython"].rootpath
-        cmake.definitions["Python{}_USE_STATIC_LIBS".format(py_major)] = not self.options["cpython"].shared
-        cmake.definitions["Python{}_FIND_FRAMEWORK".format(py_major)] = "NEVER"
-        cmake.definitions["Python{}_FIND_REGISTRY".format(py_major)] = "NEVER"
-        cmake.definitions["Python{}_FIND_IMPLEMENTATIONS".format(py_major)] = "CPython"
-        cmake.definitions["Python{}_FIND_STRATEGY".format(py_major)] = "LOCATION"
+        tc.cache_variables["BUILD_MODULE"] = self._supports_modules
+        tc.cache_variables["PY_VERSION_MAJOR"] = py_major
+        tc.cache_variables["PY_VERSION_MAJOR_MINOR"] = ".".join(self._py_version.split(".")[:2])
+        tc.cache_variables["PY_FULL_VERSION"] = self.deps_cpp_info["cpython"].version
+        tc.cache_variables["PY_VERSION"] = self._py_version
+        tc.cache_variables["PY_VERSION_SUFFIX"] = self._cmake_abi.suffix
+        tc.cache_variables["PYTHON_EXECUTABLE"] = self.deps_user_info["cpython"].python
+        tc.cache_variables["USE_FINDPYTHON_X".format(py_major)] = self._cmake_try_FindPythonX
+        tc.cache_variables["Python{}_EXECUTABLE".format(py_major)] = self.deps_user_info["cpython"].python
+        tc.cache_variables["Python{}_ROOT_DIR".format(py_major)] = self.deps_cpp_info["cpython"].rootpath
+        tc.cache_variables["Python{}_USE_STATIC_LIBS".format(py_major)] = not self.options["cpython"].shared
+        tc.cache_variables["Python{}_FIND_FRAMEWORK".format(py_major)] = "NEVER"
+        tc.cache_variables["Python{}_FIND_REGISTRY".format(py_major)] = "NEVER"
+        tc.cache_variables["Python{}_FIND_IMPLEMENTATIONS".format(py_major)] = "CPython"
+        tc.cache_variables["Python{}_FIND_STRATEGY".format(py_major)] = "LOCATION"
 
         if self.settings.compiler != "Visual Studio":
             if Version(self._py_version) < Version("3.8"):
-                cmake.definitions["Python{}_FIND_ABI".format(py_major)] = self._cmake_abi.cmake_arg
+                tc.cache_variables["Python{}_FIND_ABI".format(py_major)] = self._cmake_abi.cmake_arg
 
+        tc.generate()
+
+    def build(self):
+        cmake = CMake(self)
         cmake.configure()
         cmake.build()
 
@@ -178,7 +185,7 @@ class TestPackageConan(ConanFile):
                 # FIXME: find out why cpython on apple does not allow to use modules linked against a static python
             else:
                 if self._supports_modules:
-                    os.environ["PYTHONPATH"] = os.path.join(self.build_folder, "lib")
+                    os.environ["PYTHONPATH"] = self.build_folder
                     self.output.info("Testing module (spam) using cmake built module")
                     self._test_module("spam", True)
 
@@ -189,4 +196,5 @@ class TestPackageConan(ConanFile):
             # MSVC builds need PYTHONHOME set.
             if self.deps_user_info["cpython"].module_requires_pythonhome == "True":
                 os.environ["PYTHONHOME"] = self.deps_user_info["cpython"].pythonhome
-            self.run(os.path.join("bin", "test_package"), run_environment=True)
+            bin_path = os.path.join(self.cpp.build.bindirs[0], "test_package")
+            self.run(bin_path, run_environment=True)
