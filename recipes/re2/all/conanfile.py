@@ -2,7 +2,7 @@ from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.build import check_min_cppstd
 from conan.tools.cmake import CMake, CMakeToolchain, CMakeDeps, cmake_layout
-from conan.tools.files import copy, get, rmdir
+from conan.tools.files import copy, get, replace_in_file, rmdir
 from conan.tools.scm import Version
 import os
 
@@ -86,6 +86,17 @@ class Re2Conan(ConanFile):
         deps.generate()
 
     def build(self):
+        # HACK: fuzztest uses this internal header
+        replace_in_file(self, os.path.join(self.source_folder, "CMakeLists.txt"), "set(RE2_HEADERS", """
+set(RE2_HEADERS
+    re2/prog.h
+    util/logging.h
+    re2/pod_array.h
+    re2/sparse_array.h
+    re2/sparse_set.h
+    re2/regexp.h
+    util/utf.h
+""")
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
@@ -94,6 +105,9 @@ class Re2Conan(ConanFile):
         copy(self, "LICENSE", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
         cmake = CMake(self)
         cmake.install()
+        replace_in_file(self, os.path.join(self.package_folder, "include", "re2", "prog.h"), "util/logging.h", "re2/logging.h")
+        replace_in_file(self, os.path.join(self.package_folder, "include", "re2", "regexp.h"), "util/logging.h", "re2/logging.h")
+        replace_in_file(self, os.path.join(self.package_folder, "include", "re2", "regexp.h"), "util/utf.h", "re2/utf.h")
         rmdir(self, os.path.join(self.package_folder, "lib", "cmake"))
         rmdir(self, os.path.join(self.package_folder, "lib", "pkgconfig"))
 
