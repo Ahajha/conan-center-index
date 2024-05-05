@@ -507,7 +507,7 @@ class CPythonConan(ConanFile):
             "xxlimited",
         }
         if not self.options.with_bz2:
-            discarded.add("bz2")
+            discarded.add("_bz2")
         if not self.options.with_sqlite3:
             discarded.add("_sqlite3")
         if not self.options.with_tkinter:
