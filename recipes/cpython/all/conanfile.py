@@ -180,9 +180,6 @@ class CPythonConan(ConanFile):
                 # 3.10 fails during the test, 3.11 fails during the build (missing symbol that seems to be DLL specific: PyWin_DLLhModule)
                 raise ConanInvalidConfiguration("Static msvc build disabled (>=3.10) due to \"AttributeError: module 'sys' has no attribute 'winver'\"")
 
-        if self.options.get_safe("with_curses", False) and not self.dependencies["ncurses"].options.with_widec:
-            raise ConanInvalidConfiguration("cpython requires ncurses with wide character support")
-
         if self._supports_modules:
             if Version(self.version) >= "3.9.0":
                 if self.dependencies["mpdecimal"].ref.version < Version("2.5.0"):
