@@ -39,6 +39,7 @@ class CPythonConan(ConanFile):
         "with_tkinter": [True, False],
         "with_curses": [True, False],
         "with_lzma": [True, False],
+        "with_readline": [True, False],
 
         # options that don't change package id
         "env_vars": [True, False],  # set environment variables
@@ -57,6 +58,7 @@ class CPythonConan(ConanFile):
         "with_tkinter": True,
         "with_curses": True,
         "with_lzma": True,
+        "with_readline": True,
 
         # options that don't change package id
         "env_vars": True,
@@ -86,6 +88,7 @@ class CPythonConan(ConanFile):
             del self.options.with_curses
             del self.options.with_gdbm
             del self.options.with_nis
+            del self.options.with_readline
 
         self.settings.compiler.rm_safe("libcxx")
         self.settings.compiler.rm_safe("cppstd")
@@ -143,6 +146,8 @@ class CPythonConan(ConanFile):
             self.requires("ncurses/6.4", transitive_headers=True, transitive_libs=True)
         if self.options.get_safe("with_lzma", False):
             self.requires("xz_utils/5.4.5")
+        if self.options.get_safe("with_readline"):
+            self.requires("readline/8.2")
 
     def package_id(self):
         del self.info.options.env_vars
@@ -811,6 +816,8 @@ class CPythonConan(ConanFile):
                 self.cpp_info.components["_hidden"].requires.append("xz_utils::xz_utils")
             if self.options.get_safe("with_tkinter"):
                 self.cpp_info.components["_hidden"].requires.append("tk::tk")
+            if self.options.get_safe("with_readline"):
+                self.cpp_info.components["_hidden"].requires.append("readline::readline")
             self.cpp_info.components["_hidden"].includedirs = []
             self.cpp_info.components["_hidden"].libdirs = []
             if self.settings.os in ["Linux", "FreeBSD"]:
