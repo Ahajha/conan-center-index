@@ -131,20 +131,20 @@ class CPythonConan(ConanFile):
             self.requires("libxcrypt/4.4.36", transitive_headers=transitive_crypt, transitive_libs=transitive_crypt)
         if self.options.get_safe("with_bz2"):
             self.requires("bzip2/1.0.8")
-        if self.options.get_safe("with_gdbm", False):
+        if self.options.get_safe("with_gdbm"):
             self.requires("gdbm/1.23")
-        if self.options.get_safe("with_nis", False):
+        if self.options.get_safe("with_nis"):
             # TODO: Add nis when available.
             raise ConanInvalidConfiguration("nis is not available on CCI (yet)")
         if self.options.get_safe("with_sqlite3"):
             self.requires("sqlite3/3.45.2")
         if self.options.get_safe("with_tkinter"):
             self.requires("tk/8.6.10")
-        if self.options.get_safe("with_curses", False):
+        if self.options.get_safe("with_curses"):
             # Used in a public header
             # https://github.com/python/cpython/blob/v3.10.13/Include/py_curses.h#L34
             self.requires("ncurses/6.4", transitive_headers=True, transitive_libs=True)
-        if self.options.get_safe("with_lzma", False):
+        if self.options.get_safe("with_lzma"):
             self.requires("xz_utils/5.4.5")
         if self.options.get_safe("with_readline"):
             self.requires("readline/8.2")
