@@ -6,7 +6,7 @@ from conan import ConanFile
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.apple import is_apple_os, fix_apple_shared_install_name
 from conan.tools.env import VirtualRunEnv
-from conan.tools.files import apply_conandata_patches, copy, export_conandata_patches, get, load, mkdir, replace_in_file, rm, rmdir, save, unzip
+from conan.tools.files import apply_conandata_patches, copy, export_conandata_patches, get, load, mkdir, rename, replace_in_file, rm, rmdir, save, unzip
 from conan.tools.gnu import Autotools, AutotoolsToolchain, AutotoolsDeps, PkgConfigDeps
 from conan.tools.layout import basic_layout
 from conan.tools.microsoft import MSBuildDeps, MSBuildToolchain, MSBuild, is_msvc, is_msvc_static_runtime, msvc_runtime_flag, msvs_toolset
@@ -570,6 +570,13 @@ class CPythonConan(ConanFile):
             for bin_path in self.dependencies["zlib"].cpp_info.bindirs:
                 copy(self, "*.dll", src=bin_path, dst=dest_path)
 
+    @property
+    def _relative_libdir(self):
+        if is_msvc(self):
+            return os.path.join(self._msvc_install_subprefix, "libs")
+        else:
+            return "lib"
+
     def _msvc_package_layout(self):
         self._copy_essential_dlls()
         install_prefix = os.path.join(self.package_folder, self._msvc_install_subprefix)
@@ -617,7 +624,7 @@ class CPythonConan(ConanFile):
              dst=os.path.join(self.package_folder, self._msvc_install_subprefix, "DLLs"))
         copy(self, f"python{self._version_suffix}{infix}.lib",
              src=build_path,
-             dst=os.path.join(self.package_folder, self._msvc_install_subprefix, "libs"))
+             dst=os.path.join(self.package_folder, self._relative_libdir))
         copy(self, "*",
              src=os.path.join(self.source_folder, "Include"),
              dst=os.path.join(self.package_folder, self._msvc_install_subprefix, "include"))
@@ -656,6 +663,13 @@ class CPythonConan(ConanFile):
             else:
                 self._msvc_package_copy()
             rm(self, "vcruntime*", os.path.join(self.package_folder, "bin"), recursive=True)
+            if self._supports_modules:
+                # Copy python3(minor).lib to python3.lib
+                folder = os.path.join(self.package_folder, self._relative_libdir)
+                base_file = f"python3{Version(self.version).minor}.lib"
+                # Temporarily copy to package folder, then rename
+                copy(self, base_file, folder, self.package_folder)
+                rename(self, os.path.join(self.package_folder, base_file), os.path.join(folder, "python3.lib"))
         else:
             autotools = Autotools(self)
             if is_apple_os(self):
@@ -747,12 +761,10 @@ class CPythonConan(ConanFile):
         # python component: "Build a C extension for Python"
         if is_msvc(self):
             self.cpp_info.components["python"].includedirs = [os.path.join(self._msvc_install_subprefix, "include")]
-            libdir = os.path.join(self._msvc_install_subprefix, "libs")
         else:
             self.cpp_info.components["python"].includedirs.append(
                 os.path.join("include", f"python{self._version_suffix}{self._abi_suffix}")
             )
-            libdir = "lib"
         if self.options.shared:
             self.cpp_info.components["python"].defines.append("Py_ENABLE_SHARED")
         else:
@@ -776,7 +788,7 @@ class CPythonConan(ConanFile):
 
         # embed component: "Embed Python into an application"
         self.cpp_info.components["embed"].libs = [self._lib_name]
-        self.cpp_info.components["embed"].libdirs = [libdir]
+        self.cpp_info.components["embed"].libdirs = [self._relative_libdir]
         self.cpp_info.components["embed"].includedirs = []
         self.cpp_info.components["embed"].set_property(
             "pkg_config_name", f"python-{py_version.major}.{py_version.minor}-embed"
